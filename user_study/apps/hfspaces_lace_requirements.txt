@@ -1,0 +1,6 @@
+joblib
+numpy==1.21.6
+POT==0.8.2
+scikit-learn==1.0.1
+sentence-transformers==2.1.0
+torch==1.10.0

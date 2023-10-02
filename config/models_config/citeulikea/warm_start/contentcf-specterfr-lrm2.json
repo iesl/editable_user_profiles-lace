@@ -1,0 +1,16 @@
+{
+  "model_name": "contentcf",
+  "warm_start": true,
+  "base-pt-layer": "allenai/specter",
+  "num_epochs": 5,
+  "batch_size": 32,
+  "update_rule": "adam",
+  "learning_rate": 0.01,
+  "num_warmup_steps": 1,
+  "decay_lr_every": 1,
+  "lr_decay_method": "warmuplin",
+  "decay_lr_by": 0.95,
+  "es_check_every": 3000,
+  "loss_margin": 1.0,
+  "fine_tune": false
+}
