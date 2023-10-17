@@ -1,6 +1,6 @@
 {
   "model_name": "kpencconsent",
-  "consent-base-pt-layer": "s2orccompsci/miswordbienc/miswordbienc-2021_10_07-09_06_18-ot-best-rr1",
+  "consent-base-pt-layer": "allenai/aspire-contextualsentence-multim-compsci",
   "kp-base-pt-layer": "allenai/scibert_scivocab_uncased",
   "train_suffix": "kpenc",
   "train_size": 993979,

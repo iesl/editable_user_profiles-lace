@@ -18,8 +18,6 @@ from transformers import AutoModel
 import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
-from . import predict_utils as pu
-from .retrieval_models import content_profile_models
 
 
 def load_aspire_config(expanded_model_name):
@@ -34,58 +32,6 @@ def load_aspire_config(expanded_model_name):
         run_info = json.load(fp)
         all_hparams = run_info['all_hparams']
     return all_hparams
-
-
-def load_aspire_model(expanded_model_name):
-    """
-    Given the name of a model to load, load it and return its
-    base bert encoder.
-    :param expanded_model_name: string of the form <dataset>/<model_name>/<run_name> which is part
-        of the path to a trained model.
-    """
-    if 'gypsum' in os.environ['CUR_PROJ_DIR']:  # This is running on unity (in interactive mode)
-        trained_model_path = os.path.join('/gypsum/work1/mccallum/smysore/2021-ai2-scisim', 'model_runs', expanded_model_name)
-    else:  # This is running on gypsum.
-        trained_model_path = os.path.join(os.environ['CUR_PROJ_DIR'], 'model_runs', expanded_model_name)
-    model_name = expanded_model_name.split('/')[1]
-    with codecs.open(os.path.join(trained_model_path, 'run_info.json'), 'r', 'utf-8') as fp:
-        run_info = json.load(fp)
-        all_hparams = run_info['all_hparams']
-        # Init model:
-    if model_name in {'myspecter', 'cospecter'}:
-        model = disent_models.MySPECTER(model_hparams=all_hparams)
-    elif model_name in {'miswordbienc'}:
-        model = disent_models.WordSentAlignBiEnc(model_hparams=all_hparams)
-    elif model_name in {'sbalisentbienc'}:
-        model = disent_models.WordSentAbsSupAlignBiEnc(model_hparams=all_hparams)
-    model_fname = os.path.join(trained_model_path, 'model_{:s}.pt'.format('cur_best'))
-    if torch.cuda.is_available():
-        model.load_state_dict(torch.load(model_fname))
-    else:
-        model.load_state_dict(torch.load(model_fname, map_location=torch.device('cpu')))
-    print(f'Loaded model: {trained_model_path}')
-    return model.bert_encoder
-
-
-def load_kpenc_model(expanded_model_name):
-    """
-    Given the name of a model to load, load it and return its
-    base bert encoder.
-    :param expanded_model_name: string of the form <dataset>/<model_name>/<run_name> which is part
-        of the path to a trained model.
-    """
-    trained_model_path = os.path.join(os.environ['CUR_PROJ_DIR'], 'model_runs', expanded_model_name)
-    with codecs.open(os.path.join(trained_model_path, 'run_info.json'), 'r', 'utf-8') as fp:
-        run_info = json.load(fp)
-        all_hparams = run_info['all_hparams']
-        
-    kp_encoder = AutoModel.from_pretrained(all_hparams['kp-base-pt-layer'])
-    model_fname = os.path.join(trained_model_path, 'kp_encoder_{:s}.pt'.format('cur_best'))
-    if torch.cuda.is_available():
-        kp_encoder.load_state_dict(torch.load(model_fname))
-    else:
-        kp_encoder.load_state_dict(torch.load(model_fname, map_location=torch.device('cpu')))
-    return kp_encoder
 
 
 def print_sorted_dict(d, out_file):

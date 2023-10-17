@@ -8,8 +8,6 @@ from torch import nn as nn
 from torch.autograd import Variable
 from transformers import AutoModel
 
-from ..data_utils import load_aspire_model
-
 
 class KeyPhraseSentBERTWrapper(nn.Module):
     """
@@ -112,7 +110,7 @@ class KeyPhraseAspireWrapper(nn.Module):
         """
         torch.nn.Module.__init__(self)
         self.bert_encoding_dim = 768  # bert_config.hidden_size or DistilBertConfig.dim
-        self.sent_context_encoder = load_aspire_model(expanded_model_name=model_hparams['consent-base-pt-layer'])
+        self.sent_context_encoder = AutoModel.from_pretrained(model_hparams['consent-base-pt-layer'])
         # If fine tune is False then freeze the bert params.
         if not model_hparams['sent_fine_tune']:
             for param in self.sent_context_encoder.base_model.parameters():

@@ -1,8 +1,8 @@
 {
   "model_name": "upnfconsent",
   "train_suffix": "tfidfcsrr",
-  "consent-base-pt-layer": "s2orccompsci/miswordbienc/miswordbienc-2021_10_07-09_06_18-ot-best-rr1",
-  "kp-base-pt-layer": "gorccompscicit/kpencconsent/kpencconsent-2022_01_19-21_54_43-scib",
+  "consent-base-pt-layer": "allenai/aspire-contextualsentence-multim-compsci",
+  "kp-base-pt-layer": "Sheshera/lace-kp-encoder-compsci",
   "score_aggregation": "l2wasserstein",
   "ict_train_frac": 0.5,
   "ict_lossprop": 0.1,
