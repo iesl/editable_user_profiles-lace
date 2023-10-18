@@ -151,7 +151,7 @@ class CachingTrainedScoringModelUDoc2D:
         elif model_name in {'sentsbmpnet1b', 'sentsbnlibert'}:
             model = content_profile_models.WordSentAlignBiEnc(model_hparams=all_hparams)
             batcher = batchers.AbsSentTokBatcher
-        elif model_name in {'specter'}:
+        elif model_name in {'specter', 'scincl'}:
             model = content_profile_models.SPECTER(model_hparams=all_hparams)
             batcher = batchers.AbsTripleBatcher
         elif model_name in {'docsbmpnet1b', 'docsbnlibert'}:
@@ -449,8 +449,9 @@ class CachingTrainedScoringModelUPro2D:
         return uq_clustered_rep
 
 
-def caching_scoringmodel_rank_pool_sent(root_path, trained_model_path, model_name,
-                                        dataset, run_name, model_version, train_suffix=None, ann_suffix=False):
+def caching_scoringmodel_rank_pool_sent(root_path, model_name, dataset, run_name, model_version,
+                                        model_config_path=None, trained_model_path=None, train_suffix=None,
+                                        ann_suffix=False):
     """
     Given a pool of candidates re-rank the pool based on the model scores.
     Function for use when model classes provide methods to encode data, and then score
@@ -476,19 +477,23 @@ def caching_scoringmodel_rank_pool_sent(root_path, trained_model_path, model_nam
         with codecs.open(os.path.join(trained_model_path, 'run_info.json'), 'r', 'utf-8') as fp:
             run_info = json.load(fp)
             all_hparams = run_info['all_hparams']
-    else:
-        assert model_name in ('docsbmpnet1b', 'docsbnlibert',
-                              'sentsbmpnet1b', 'sentsbnlibert')
+    elif model_config_path:
+        with codecs.open(model_config_path, 'r', 'utf-8') as fp:
+            all_hparams = json.load(fp)
+    elif model_name in {'docsbmpnet1b', 'docsbnlibert', 'sentsbmpnet1b', 'sentsbnlibert', 'specter', 'scincl'}:
         base_pt_layer = {'docsbmpnet1b': 'sentence-transformers/all-mpnet-base-v2',
                          'docsbnlibert': 'sentence-transformers/bert-base-nli-mean-tokens',
                          'sentsbmpnet1b': 'sentence-transformers/all-mpnet-base-v2',
-                         'sentsbnlibert': 'sentence-transformers/bert-base-nli-mean-tokens'}
+                         'sentsbnlibert': 'sentence-transformers/bert-base-nli-mean-tokens',
+                         'specter': 'allenai/specter',
+                         'scincl': 'malteos/scincl'}
         all_hparams = {
             'base-pt-layer': base_pt_layer[model_name],
             # Unnecessary but expected in model class.
             'score_aggregation': 'l2max',
             'fine_tune': False
         }
+    
     warm_start = all_hparams.get('warm_start', False)  # Default is cold-start.
     
     if run_name:
@@ -527,7 +532,7 @@ def caching_scoringmodel_rank_pool_sent(root_path, trained_model_path, model_nam
     logging.info(f'Read anns: {dataset}; total: {len(user_id2pool)}')
     
     # Load trained model.
-    if model_name in {'specter', 'miswordbienc',
+    if model_name in {'specter', 'scincl', 'miswordbienc',
                       'docsbmpnet1b', 'docsbnlibert',
                       'sentsbmpnet1b', 'sentsbnlibert'}:
         trained_model = CachingTrainedScoringModelUDoc2D(all_hparams=all_hparams, model_name=model_name,
@@ -564,6 +569,8 @@ def caching_scoringmodel_rank_pool_sent(root_path, trained_model_path, model_nam
     du.create_dir(readable_dir_path)
     start = time.time()
     for uidx, user_id in enumerate(query_user_ids):
+        # if len(query2rankedcands) == 20:
+        #     break
         logging.info('Ranking query {:d}: {:s}'.format(uidx, user_id))
         cand_pids = user_id2pool[user_id]['cands']
         cand_pid_rels = user_id2pool[user_id]['relevance_adju']
@@ -634,8 +641,11 @@ def print_one_pool_nearest_neighbours(user_id, uq_docids, all_neighbour_docids, 
                           enumerate(pid2paperdata[uq_docid]['abstract'])])
         resfile.write('PAPER_ID: {:s}\n'.format(uq_docid))
         resfile.write('TITLE: {:s}\n'.format(qtitle))
-        kps = ' - '.join(pid2paperdata[uq_docid]['forecite_tags'][:5])
-        resfile.write('KEYPHRASES:\n{:s}\n'.format(kps))
+        try:
+            kps = ' - '.join(pid2paperdata[uq_docid]['forecite_tags'][:5])
+            resfile.write('KEYPHRASES:\n{:s}\n'.format(kps))
+        except KeyError:
+            pass
         resfile.write('ABSTRACT:\n{:s}\n'.format(qabs))
     resfile.write('===================================\n')
     for ranki, (ndocid, relevance) in enumerate(zip(all_neighbour_docids, pid_relevances)):
@@ -646,8 +656,6 @@ def print_one_pool_nearest_neighbours(user_id, uq_docids, all_neighbour_docids, 
         ntitle = pid2paperdata[ndocid]['title']
         nabs = '\n'.join(['{:d}: {:s}'.format(i, sent) for i, sent in
                           enumerate(pid2paperdata[ndocid]['abstract'])])
-        nkps = pid2paperdata[ndocid]['forecite_tags']
-        print_kps = ' - '.join(pid2paperdata[ndocid]['forecite_tags'][:5])
         resfile.write('RANK: {:d}\n'.format(ranki))
         resfile.write('PAPER_ID: {:s}\n'.format(ndocid))
         if isinstance(relevance, int):
@@ -655,8 +663,13 @@ def print_one_pool_nearest_neighbours(user_id, uq_docids, all_neighbour_docids, 
         if ranked_pair_sim_strings:
             resfile.write('Query sent sims:\n{:}\n'.format(ranked_pair_sim_strings[ranki]))
         resfile.write('TITLE: {:s}\n'.format(ntitle))
-        resfile.write(f'NUM KPS: {len(nkps)}\n')
-        resfile.write(f'KEYPHRASES: {print_kps}\n')
+        try:
+            nkps = pid2paperdata[ndocid]['forecite_tags']
+            print_kps = ' - '.join(pid2paperdata[ndocid]['forecite_tags'][:5])
+            resfile.write(f'NUM KPS: {len(nkps)}\n')
+            resfile.write(f'KEYPHRASES: {print_kps}\n')
+        except KeyError:
+            pass
         resfile.write('ABSTRACT:\n{:s}\n\n'.format(nabs))
     resfile.write('======================================================================\n')
     resfile.write('\n')
@@ -716,13 +729,16 @@ def main():
     dataset_rank_pool.add_argument('--run_name', default=None,
                                    help='Path with trained sentence reps if using.')
     dataset_rank_pool.add_argument('--rep_type', required=True,
-                                   choices=['specter', 'miswordbienc',
+                                   choices=['specter', 'scincl', 'miswordbienc',
                                             'upsentconsent', 'upnfconsent', 'upnfkpenc', 'contentcf',
                                             'docsbmpnet1b', 'docsbnlibert',
                                             'sentsbmpnet1b', 'sentsbnlibert'],
                                    help='The kind of rep to use for nearest neighbours.')
     dataset_rank_pool.add_argument('--model_path', default=None,
                                    help='Path to directory with trained model to use for getting scoring function.')
+    dataset_rank_pool.add_argument('--config_path', default=None,
+                                   help='Path to a specific json config with hyperparams for a model. '
+                                        'This will likely be something in the config/models_config directory')
     dataset_rank_pool.add_argument('--model_version', default='cur_best',
                                    choices=['cur_best', 'init', 'final'],
                                    help='The dataset to predict for.')
@@ -761,6 +777,7 @@ def main():
                 caching_scoringmodel_rank_pool_sent(
                     root_path=cl_args.root_path, model_name=cl_args.rep_type, dataset=cl_args.dataset,
                     run_name=cl_args.run_name, trained_model_path=cl_args.model_path,
+                    model_config_path=cl_args.config_path,
                     model_version=cl_args.model_version, train_suffix=cl_args.train_suffix,
                     ann_suffix=cl_args.ann_suffix)
         elif cl_args.dataset in {'tedrec'}:
@@ -771,6 +788,7 @@ def main():
                 caching_scoringmodel_rank_pool_sent(
                     root_path=cl_args.root_path, model_name=cl_args.rep_type, dataset=cl_args.dataset,
                     run_name=cl_args.run_name, trained_model_path=cl_args.model_path,
+                    model_config_path=cl_args.config_path,
                     model_version=cl_args.model_version, train_suffix=cl_args.train_suffix,
                     ann_suffix=cl_args.ann_suffix)
 

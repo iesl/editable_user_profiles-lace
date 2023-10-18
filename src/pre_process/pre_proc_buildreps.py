@@ -39,11 +39,9 @@ class TrainedModel:
             else:
                 model.load_state_dict(torch.load(model_fname, map_location=torch.device('cpu')))
             print(f'Loaded model: {model_fname}')
-        # This is meant to be used with pre-trained encoders on HF to get contextual sentence
-        # reps from them - things like sentence-transformers/all-mpnet-base-v2.
         else:
-            assert(model_name in {'sentence-transformers/all-mpnet-base-v2',
-                                  'sentence-transformers/bert-base-nli-mean-tokens'})
+            # Models lile: 'sentence-transformers/all-mpnet-base-v2, sentence-transformers/bert-base-nli-mean-tokens',
+            # allenai/aspire-contextualsentence-multim-compsci
             all_hparams = {
                 'base-pt-layer': model_name,
                 # Unnecessary but expected in model class.
@@ -73,9 +71,8 @@ class TrainedModel:
                 bert_batch, _, _ = batchers.SentTripleBatcher.prepare_bert_sentences(sents=batch, tokenizer=self.tokenizer)
                 ret_dict = self.model.encode(batch_dict={'bert_batch': bert_batch})
                 return ret_dict, ret_dict['doc_reps']
-            elif self.model_name in {'miswordbienc', 'upnfconsent',
-                                     'sentence-transformers/all-mpnet-base-v2',
-                                     'sentence-transformers/bert-base-nli-mean-tokens'}:
+            # Go here: 'miswordbienc', 'upnfconsent', 'sentence-transformers/all-mpnet-base-v2', 'sentence-transformers/bert-base-nli-mean-tokens':
+            else:
                 batch_dict = batchers.AbsSentTokBatcher.make_batch(raw_feed={'query_texts': batch},
                                                                    pt_lm_tokenizer=self.tokenizer)
                 ret_dict = self.model.encode(batch_dict=batch_dict)
@@ -97,15 +94,15 @@ def get_wholeabs_sent_reps(doc_stream, model_name, trained_model_path, model_ver
     if model_name in {'miswordbienc'}:
         trained_model = TrainedModel(model_name=model_name, trained_model_path=trained_model_path,
                                      model_version=model_version)
-        batch_size = 16
-    elif model_name in {'sentence-transformers/all-mpnet-base-v2', "sentence-transformers/bert-base-nli-mean-tokens"}:
-        trained_model = TrainedModel(model_name=model_name, trained_model_path=trained_model_path,
-                                     model_version=model_version)
-        batch_size = 16
+        batch_size = 32
     elif model_name in {'upnfconsent'}:
         trained_model = TrainedModel(model_name=model_name, trained_model_path=trained_model_path,
                                      model_version=model_version)
-        batch_size = 16
+        batch_size = 32
+    else:
+        trained_model = TrainedModel(model_name=model_name, trained_model_path=trained_model_path,
+                                     model_version=model_version)
+        batch_size = 32
     start = time.time()
     print(f'Num docs: {num_docs}')
     
