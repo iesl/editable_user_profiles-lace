@@ -19,6 +19,7 @@ Repository accompanying paper:
     ├── README.md
     ├── bin
     ├── config
+    ├── data
     ├── documentation
     ├── requirements.txt
     ├── src
@@ -30,7 +31,9 @@ Repository accompanying paper:
 
 - `config`: This contains `json` configs containing hyperparameters for models per dataset, evaluation setup, and model for experiments reported in the paper.
 
-- `documentation`: More documentation.
+- `data`: Contains concepts extracted with [Forecite](https://dl.acm.org/doi/10.1145/3397271.3401235) that are used in LACE. The directory also contains a pre-processed copy of an openly available reviewer-paper matching [dataset](https://github.com/niharshah/goldstandard-reviewer-paper-match) as demo data for showing how to run LACE.
+
+- `documentation`: More documentation + usage instructions for demo data and models hosted on Huggingface.
 
 - `user_study`: Contains streamlit app code for the LACE and ItemKNN models run in the user_study reported in the paper as well as pre-processing for the (non-personal) data used in the experiments.
 
@@ -56,8 +59,3 @@ Please cite the LACE paper as:
     series = {SIGIR '23}
 }
 ```
-
-
-### TODOs
-
-1. Release trained model parameters and usage instructions.
