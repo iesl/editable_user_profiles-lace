@@ -1,6 +1,6 @@
 ## Usage for reviewer-paper matching data
 
-There are instructions to run LACE inference on an openly available reviewer-paper matching [dataset](https://github.com/niharshah/goldstandard-reviewer-paper-match). The code refers to this dataset as `cmugoldrpm` and the paper refers to it as RAPRatings.
+These are instructions to run LACE inference on an openly available reviewer-paper matching [dataset](https://github.com/niharshah/goldstandard-reviewer-paper-match). The code refers to this dataset as `cmugoldrpm` and the paper (Appendix A) refers to it as RAPRatings.
 
 
 1. Clone this repository.
