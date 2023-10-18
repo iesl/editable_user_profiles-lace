@@ -20,5 +20,5 @@ pip3 install https://s3-us-west-2.amazonaws.com/ai2-s2-scispacy/releases/v0.5.0/
 
 5. Assuming that the data has been processed for LACE run the below command for running inference with LACE. The function initializes LACE models (document and concept encoders) from a huggingface repo, reads the processed data, and produces scores for users and candidate items. It writes a readable output and a machine readable json file with the output.
 ```python
-python3 -um src.pre_process.pp_gen_nearest.py rank_pool --root_path data/cmugoldrpm --dataset cmugoldrpm --rep_type upnfconsent --config_path config/models_config/cmugoldrpm/upnfconsent-rrtkp-baryc-init.json --caching_scorer
+python3 -um src.pre_process.pp_gen_nearest rank_pool --root_path data/cmugoldrpm --dataset cmugoldrpm --rep_type upnfconsent --config_path config/models_config/cmugoldrpm/upnfconsent-rrtkp-baryc-init.json --caching_scorer
 ```
