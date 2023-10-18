@@ -29,6 +29,7 @@ class UPNamedFAspireKP(nn.Module):
         torch.nn.Module.__init__(self)
         self.bert_encoding_dim = 768
         self.bert_layer_count = 12 + 1  # plus 1 for the bottom most layer.
+        # todo: fine a more general way to determine if its pre-trained.
         self.sent_encoder = AutoModel.from_pretrained(model_hparams['consent-base-pt-layer'])
         self.sent_encoder.config.output_hidden_states = True
         # If fine tune is False then freeze the bert params.
@@ -54,6 +55,12 @@ class UPNamedFAspireKP(nn.Module):
         self.ict_lossprop = model_hparams.get('ict_lossprop', 0)
         if self.ict_lossprop > 0:
             self.criterion_ict = nn.TripletMarginLoss(margin=1, p=2, reduction='sum')
+        # Unused as of now.
+        # self.sent_entropy_lossprop = model_hparams.get('sent_entropy_lossprop', 0)
+        # self.kp_entropy_lossprop = model_hparams.get('kp_entropy_lossprop', 0)
+        # self.kp_align_lossprop = model_hparams.get('kp_align_lossprop', 0)
+        # self.candkp_search_lossprop = model_hparams.get('candkp_search_lossprop', 0)
+        # self.criterion_entropy = loss.EntropyLossProb(size_average=False)
     
     def caching_score(self, query_encode_ret_dict, cand_encode_ret_dicts):
         if self.cl_mag_prune_cand:
@@ -288,15 +295,15 @@ class UPNamedFAspireKP(nn.Module):
         if torch.cuda.is_available():
             zero_mask = zero_mask.cpu().data.numpy() if zero_mask!=None else None
             weighted_sents = weighted_sents.cpu().data.numpy()
-            qd = qd.cpu().data.numpy() if qd else None  # these are none when using softmax for assignment.
-            cd = cd.cpu().data.numpy() if cd else None
+            qd = qd.cpu().data.numpy() if qd!=None else None  # these are none when using softmax for assignment.
+            cd = cd.cpu().data.numpy() if cd!=None else None
             dists = dists.cpu().data.numpy()
             tplan = tplan.cpu().data.numpy()
         else:
             zero_mask = zero_mask.data.numpy() if zero_mask!=None else None
             weighted_sents = weighted_sents.data.numpy()
-            qd = qd.data.numpy() if qd else None
-            cd = cd.data.numpy() if cd else None
+            qd = qd.data.numpy() if qd!=None else None
+            cd = cd.data.numpy() if cd!=None else None
             dists = dists.data.numpy()
             tplan = tplan.data.numpy()
         upsr = weighted_sents[0, :, :]
@@ -771,7 +778,6 @@ class UPNamedFBaryCProj(UPNamedFAspireKP):
         torch.nn.Module.__init__(self)
         self.bert_encoding_dim = 768  # bert_config.hidden_size or DistilBertConfig.dim
         self.bert_layer_count = 12 + 1  # plus 1 for the bottom most layer.
-        # todo: fine a more general way to determine if its pre-trained.
         self.sent_encoder = AutoModel.from_pretrained(model_hparams['consent-base-pt-layer'])
         self.sent_encoder.config.output_hidden_states = True
         # If fine tune is False then freeze the bert params.
@@ -1206,3 +1212,126 @@ class UPNamedFKPCandSent(UPNamedFBaryCProj):
         recom_loss_val = self.criterion(userp_kps, cand_sents, negcand_sents)
         
         return recom_loss_val
+    
+
+class UPNamedFKP(UPNamedFAspireKP):
+    """
+    Get keyphrases for the papers, encode them, and use them for
+    computing distances between documents - sentences play no role at all.
+    - This is not used anymore for upnfkpenc since i switched the default
+        model to barycenter proj models.
+    """
+    def __init__(self, model_hparams):
+        """
+        :param model_hparams: dict(string:int); model hyperparams.
+        """
+        torch.nn.Module.__init__(self)
+        self.bert_encoding_dim = 768  # bert_config.hidden_size or DistilBertConfig.dim
+        self.bert_layer_count = 12 + 1  # plus 1 for the bottom most layer.
+        self.kp_encoder = AutoModel.from_pretrained(model_hparams['kp-base-pt-layer'])
+        if not model_hparams['kp_fine_tune']:
+            for param in self.kp_encoder.base_model.parameters():
+                param.requires_grad = False
+        self.score_agg_type = model_hparams['score_aggregation']
+        if self.score_agg_type == 'l2wasserstein':
+            ot_distance = pair_dist.AllPairMaskedWasserstein(model_hparams)
+            self.dist_function = ot_distance.compute_distance
+        else:
+            raise ValueError(f'Unknown aggregation: {self.score_agg_type}')
+        self.cl_mag_prune_cand = model_hparams.get('mag_prune_cand', False)
+        self.criterion = nn.TripletMarginWithDistanceLoss(distance_function=self.dist_function,
+                                                          margin=1.0, reduction='sum')
+    
+    def caching_encode(self, batch_dict):
+        """
+        Function used at test time.
+        batch_dict: dict of the form accepted by forward_rank but without any of the
+            negative examples.
+        :return: ret_dict
+        """
+        batch_abs_kps = batch_dict['batch_abs_kps']
+        # num_abs*num_abs_kps x encoding dim
+        batch_kp_reps = self.sent_reps_bert(bert_batch=batch_dict['kp_bert_batch'])
+        # Make numpy arrays and return.
+        if torch.cuda.is_available():
+            batch_kp_reps = batch_kp_reps.cpu().data.numpy()
+        else:
+            batch_kp_reps = batch_kp_reps.data.numpy()
+        # Return a list of reps instead of reps collated as one np array.
+        batch_reps = []
+        start_kpi = 0
+        for i, abs_kps in enumerate(batch_abs_kps):
+            # num_kps x encoding_dim
+            kp_reps = batch_kp_reps[start_kpi:start_kpi+len(abs_kps), :]
+            start_kpi += len(abs_kps)
+            batch_reps.append({'sent_reps': (kp_reps, None)})
+        return batch_reps
+    
+    def forward(self, batch_dict):
+        batch_loss = self.forward_rank(batch_dict['batch_rank'])
+        loss_dict = {
+            'rankl': batch_loss
+        }
+        return loss_dict
+    
+    def forward_rank(self, batch_rank):
+        """
+        Function used at training time.
+        batch_dict: dict of the form:
+        {
+            'kp_bert_batch': The batch which BERT inputs with keyphrases;
+                Tokenized and int mapped sentences and other inputs to BERT.
+            Stuff below indexes into the abstract sentence reps and keyphrase reps
+            to create an effective batch of users-candidates-negatives.
+            'user_kps': idx_len_tup(flat_seq_idxs, seq_lens),
+            'cand_kps': idx_len_tup(flat_seq_idxs, seq_lens),
+            'neg_kps': idx_len_tup(flat_seq_idxs, seq_lens)
+        }
+        :return: loss_val; torch Variable.
+        """
+        # Get the keyphrase reps from the model.
+        keyphrase_reps = self.sent_reps_bert(bert_batch=batch_rank['kp_bert_batch'])
+
+        # Build the effective batch from the sentence and kp reps.
+        userp_kps, cand_kps, negcand_kps = self.create_effective_batch(batch_rank, keyphrase_reps)
+        
+        loss_val = self.criterion(userp_kps, cand_kps, negcand_kps)
+        return loss_val
+    
+    def create_effective_batch(self, batch_rank, keyphrase_reps):
+        """
+        Given the sentence reps for the whole batch:
+        - Index into the sentence reps to get the positive examples (user-papers paired with
+            a single other user paper) and the corresponding negative reps.
+        - In getting the positive user-paper pairs, repeatedly sample different user papers
+            to represent their profile and treat the other paper as a candidate paired
+            with a negative.
+        """
+        num_kps, _ = keyphrase_reps.size()
+        kp_pad = Variable(torch.zeros(1, self.bert_encoding_dim))
+        up_kpi, cand_kpi, neg_kpi = Variable(batch_rank['user_kps'].flat_seqi), \
+                                    Variable(batch_rank['cand_kps'].flat_seqi), \
+                                    Variable(batch_rank['neg_kps'].flat_seqi)
+        if torch.cuda.is_available():
+            kp_pad = kp_pad.cuda()
+            up_kpi, cand_kpi, neg_kpi = up_kpi.cuda(), cand_kpi.cuda(), neg_kpi.cuda()
+        # Flatten the reps and append the zero pad value.
+        flat_kp_reps = torch.cat((keyphrase_reps, kp_pad), 0)
+        # Index into sentences and kps.
+        efbatch_size = len(batch_rank['user_papers'].seq_lens)
+        max_user_kps = max(batch_rank['user_kps'].seq_lens)
+        userp_kps = torch.index_select(
+            flat_kp_reps, 0, up_kpi).view(efbatch_size, max_user_kps, self.bert_encoding_dim)
+        userp_kps = pair_dist.rep_len_tup(embed=userp_kps.permute(0, 2, 1),
+                                          abs_lens=batch_rank['user_kps'].seq_lens)
+        max_cand_kps = max(batch_rank['cand_kps'].seq_lens)
+        cand_kps = torch.index_select(
+            flat_kp_reps, 0, cand_kpi).view(efbatch_size, max_cand_kps, self.bert_encoding_dim)
+        cand_kps = pair_dist.rep_len_tup(embed=cand_kps.permute(0, 2, 1),
+                                         abs_lens=batch_rank['cand_kps'].seq_lens)
+        max_negcand_kps = max(batch_rank['neg_kps'].seq_lens)
+        negcand_kps = torch.index_select(
+            flat_kp_reps, 0, neg_kpi).view(efbatch_size, max_negcand_kps, self.bert_encoding_dim)
+        negcand_kps = pair_dist.rep_len_tup(embed=negcand_kps.permute(0, 2, 1),
+                                            abs_lens=batch_rank['neg_kps'].seq_lens)
+        return userp_kps, cand_kps, negcand_kps

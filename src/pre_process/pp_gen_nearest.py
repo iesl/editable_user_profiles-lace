@@ -276,12 +276,13 @@ class CachingTrainedScoringModelUPro2D:
             batcher = rec_batchers.UserCandKPBatcher
         else:
             raise ValueError(f'Unknown model: {model_name}')
-        model_fname = os.path.join(trained_model_path, 'model_{:s}.pt'.format(model_version))
-        if torch.cuda.is_available():
-            model.load_state_dict(torch.load(model_fname))
-        else:
-            model.load_state_dict(torch.load(model_fname, map_location=torch.device('cpu')))
-        logging.info(f'Scoring model: {model_fname}')
+        if trained_model_path:
+            model_fname = os.path.join(trained_model_path, 'model_{:s}.pt'.format(model_version))
+            if torch.cuda.is_available():
+                model.load_state_dict(torch.load(model_fname))
+            else:
+                model.load_state_dict(torch.load(model_fname, map_location=torch.device('cpu')))
+            logging.info(f'Scoring model: {model_fname}')
         if 'consent-base-pt-layer' in all_hparams and 's2orccompsci' in all_hparams['consent-base-pt-layer']:
             self.abs_tokenizer = AutoTokenizer.from_pretrained("allenai/specter")
             self.kp_tokenizer = AutoTokenizer.from_pretrained("allenai/scibert_scivocab_uncased")
@@ -747,7 +748,7 @@ def main():
                                    help='The abstract file version to use.')
     dataset_rank_pool.add_argument('--dataset', required=True,
                                    choices=['citeulikea', 'citeuliket', 'tedrec',
-                                            'oriclr2019', 'oriclr2020', 'oruai2019'],
+                                            'oriclr2019', 'oriclr2020', 'oruai2019', 'cmugoldrpm'],
                                    help='The dataset to predict for.')
     dataset_rank_pool.add_argument('--log_fname',
                                    help='File name for the log file to which logs get written.')
@@ -785,6 +786,14 @@ def main():
                                     'sentsbmpnet1b', 'sentsbnlibert', 'upsentconsent',
                                     'upnfconsent', 'upnfkpenc', 'contentcf'} \
                     and cl_args.caching_scorer:
+                caching_scoringmodel_rank_pool_sent(
+                    root_path=cl_args.root_path, model_name=cl_args.rep_type, dataset=cl_args.dataset,
+                    run_name=cl_args.run_name, trained_model_path=cl_args.model_path,
+                    model_config_path=cl_args.config_path,
+                    model_version=cl_args.model_version, train_suffix=cl_args.train_suffix,
+                    ann_suffix=cl_args.ann_suffix)
+        elif cl_args.dataset in {'cmugoldrpm'}:
+            if cl_args.rep_type in {'upnfconsent'}:
                 caching_scoringmodel_rank_pool_sent(
                     root_path=cl_args.root_path, model_name=cl_args.rep_type, dataset=cl_args.dataset,
                     run_name=cl_args.run_name, trained_model_path=cl_args.model_path,
